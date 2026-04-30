@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>🏓 Pong Pod</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: monospace;
+        background: #0d0d0d;
+        color: #ccc;
+        display: grid;
+        grid-template-rows: 48px 1fr;
+        height: 100vh;
+        overflow: hidden;
+      }
+      header {
+        background: #111;
+        border-bottom: 1px solid #222;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 0 20px;
+      }
+      header strong { color: #fff; font-size: 16px; }
+      #status { font-size: 13px; color: #888; }
+      #portalLink {
+        margin-left: auto;
+        font-size: 12px;
+        color: #4af;
+        text-decoration: none;
+        display: none;
+      }
+      #portalLink:hover { text-decoration: underline; }
+      main {
+        display: grid;
+        grid-template-columns: 1fr 340px;
+        overflow: hidden;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+        background: #111;
+      }
+      #console {
+        background: #000;
+        border-left: 1px solid #222;
+        font-size: 11px;
+        overflow-y: auto;
+        padding: 8px;
+        color: #7f7;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>🏓 Pong Pod</strong>
+      <span id="status">Booting pod…</span>
+      <a id="portalLink" target="_blank">Open in new tab ↗</a>
+    </header>
+    <main>
+      <iframe id="preview"></iframe>
+      <div id="console"></div>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
