@@ -8,6 +8,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@tavily/core": "^0.7.1",
     "express": "^5.1.0"
   }
 }

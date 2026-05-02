@@ -22,7 +22,7 @@ function setStatus(kind, text) {
 }
 
 function setPortalUrl(url, port) {
-  urlDiv.innerHTML = `Portal 已创建（本地端口 ${port}）：<a href="${url}" target="_blank" rel="noreferrer">${url}</a>`;
+  urlDiv.innerHTML = `Portal is live on local port ${port}: <a href="${url}" target="_blank" rel="noreferrer">${url}</a>`;
   openLinkBtn.href = url;
   openLinkBtn.classList.remove("disabled");
 }
@@ -31,17 +31,17 @@ function setQrCode(url) {
   qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(url)}`;
   qrImage.onload = () => {
     qrImage.style.display = "block";
-    qrHint.textContent = "手机扫码后即可进入 MBTI 问卷。";
+    qrHint.textContent = "Scan to open the WBTI behavior browser test.";
   };
   qrImage.onerror = () => {
-    qrHint.textContent = "二维码加载失败，请直接使用上方链接。";
+    qrHint.textContent = "QR loading failed. Please use the link above.";
   };
 }
 
 function renderTypeStats(byType) {
   const entries = Object.entries(byType || {}).sort((a, b) => b[1] - a[1]);
   if (entries.length === 0) {
-    typeStats.innerHTML = '<span class="pill">暂无类型数据</span>';
+    typeStats.innerHTML = '<span class="pill">No persona data yet</span>';
     return;
   }
 
@@ -55,18 +55,21 @@ function formatTime(isoString) {
   if (Number.isNaN(time.valueOf())) {
     return "--";
   }
-  return time.toLocaleString("zh-CN", { hour12: false });
+  return time.toLocaleString("en-US", { hour12: false });
 }
 
 function renderRecentRows(rows) {
   if (!rows || rows.length === 0) {
-    recentTableBody.innerHTML = '<tr><td colspan="4" class="empty">尚未收到提交</td></tr>';
+    recentTableBody.innerHTML = '<tr><td colspan="4" class="empty">No results yet</td></tr>';
     return;
   }
 
   recentTableBody.innerHTML = rows
     .map((item) => {
-      return `<tr><td>${item.id}</td><td>${item.name}</td><td>${item.mbti}</td><td>${formatTime(item.createdAt)}</td></tr>`;
+      const topic = item.topic || "--";
+      const persona = item.persona || "--";
+      const mbti = item.mbti || "--";
+      return `<tr><td>${item.id}</td><td>${persona}<div class="metric-label">${mbti}</div></td><td>${topic}</td><td>${formatTime(item.createdAt)}</td></tr>`;
     })
     .join("");
 }
@@ -110,12 +113,12 @@ async function copyPortalLink() {
 
   try {
     await navigator.clipboard.writeText(portalUrl);
-    copyLinkBtn.textContent = "链接已复制";
+    copyLinkBtn.textContent = "Copied";
     setTimeout(() => {
-      copyLinkBtn.textContent = "复制问卷链接";
+      copyLinkBtn.textContent = "Copy Test Link";
     }, 1400);
   } catch (error) {
-    copyLinkBtn.textContent = "复制失败，请手动复制";
+    copyLinkBtn.textContent = "Copy failed";
     console.warn("Clipboard write failed:", error);
   }
 }
@@ -123,12 +126,12 @@ async function copyPortalLink() {
 copyLinkBtn.addEventListener("click", copyPortalLink);
 
 try {
-  setStatus("pending", "BrowserPod 启动中...");
+  setStatus("pending", "Booting BrowserPod...");
 
   const pod = await BrowserPod.boot({ apiKey: import.meta.env.VITE_BP_APIKEY });
   const terminal = await pod.createDefaultTerminal(document.querySelector("#console"));
 
-  setStatus("pending", "Pod 已启动，正在创建 Portal...");
+  setStatus("pending", "Pod booted. Creating portal...");
 
   pod.onPortal(({ url, port }) => {
     portalUrl = url;
@@ -136,7 +139,7 @@ try {
     setPortalUrl(url, port);
     setQrCode(url);
     copyLinkBtn.disabled = false;
-    setStatus("ready", "问卷已上线，可扫码填写");
+    setStatus("ready", "WBTI test is live");
     startPollingStats();
   });
 
@@ -160,6 +163,6 @@ try {
   });
 } catch (error) {
   console.error(error);
-  setStatus("error", "启动失败，请检查 API Key 或网络");
+  setStatus("error", "Startup failed. Check API key or network.");
   urlDiv.textContent = String(error?.message || error);
 }

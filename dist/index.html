@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>WBTI MBTI 收集站</title>
+    <title>WBTI Control Console</title>
     <link rel="icon" type="image/png" href="/favicon.png" />
-    <script type="module" crossorigin src="/assets/index-CfJasrCc.js"></script>
+    <script type="module" crossorigin src="/assets/index-BqR62jKq.js"></script>
     <link rel="stylesheet" crossorigin href="/assets/index-B5DiNSAm.css">
   </head>
   <body>
@@ -14,40 +14,40 @@
         <div class="intro-head">
           <img src="/logo.png" alt="BrowserPod Logo" class="logo" />
           <div>
-            <h1>WBTI MBTI 收集站</h1>
-            <p class="lead">在当前浏览器内启动问卷服务，再让参与者扫码填写。</p>
+            <h1>WBTI Control Console</h1>
+            <p class="lead">Launch a 5-minute browser behavior test and monitor profile analytics in real time.</p>
           </div>
         </div>
 
         <div class="status-row">
-          <span id="statusBadge" class="badge pending">BrowserPod 启动中...</span>
+          <span id="statusBadge" class="badge pending">Booting BrowserPod...</span>
         </div>
-        <p id="url" class="url">等待 Portal URL...</p>
+        <p id="url" class="url">Waiting for portal URL...</p>
 
         <div class="action-row">
-          <button id="copyLinkBtn" type="button" class="ghost" disabled>复制问卷链接</button>
-          <a id="openLinkBtn" class="ghost disabled" href="#" target="_blank" rel="noreferrer">新标签打开问卷</a>
+          <button id="copyLinkBtn" type="button" class="ghost" disabled>Copy Test Link</button>
+          <a id="openLinkBtn" class="ghost disabled" href="#" target="_blank" rel="noreferrer">Open in New Tab</a>
         </div>
       </section>
 
       <section class="grid">
         <article class="card qr-card">
-          <h2>问卷二维码</h2>
+          <h2>Test QR</h2>
           <div class="qr-shell">
             <img id="qrImage" alt="Questionnaire QR code" />
-            <p id="qrHint">Portal 创建后会自动生成二维码。</p>
+            <p id="qrHint">QR code appears after portal is ready.</p>
           </div>
         </article>
 
         <article class="card summary-card">
-          <h2>收集概览</h2>
+          <h2>Live Summary</h2>
           <div class="metric-row">
             <div class="metric">
-              <div class="metric-label">总提交数</div>
+              <div class="metric-label">Total Sessions</div>
               <div id="totalCount" class="metric-value">0</div>
             </div>
             <div class="metric">
-              <div class="metric-label">最近刷新</div>
+              <div class="metric-label">Last Refresh</div>
               <div id="lastUpdated" class="metric-value small">--</div>
             </div>
           </div>
@@ -56,20 +56,20 @@
       </section>
 
       <section class="card">
-        <h2>最近提交</h2>
+          <h2>Recent Results</h2>
         <div class="table-wrap">
           <table>
             <thead>
               <tr>
                 <th>#</th>
-                <th>昵称</th>
-                <th>MBTI</th>
-                <th>提交时间</th>
+                <th>Persona / MBTI</th>
+                <th>Topic</th>
+                <th>Finished At</th>
               </tr>
             </thead>
             <tbody id="recentTableBody">
               <tr>
-                <td colspan="4" class="empty">尚未收到提交</td>
+                <td colspan="4" class="empty">No results yet</td>
               </tr>
             </tbody>
           </table>
@@ -77,7 +77,7 @@
       </section>
 
       <section class="card preview-panel">
-        <h2>问卷预览与运行日志</h2>
+        <h2>Live Preview and Runtime Logs</h2>
         <div class="preview-grid">
           <iframe id="portal" title="Survey preview"></iframe>
           <pre id="console"></pre>
