@@ -1,6 +1,5 @@
 const express = require("express");
 const crypto = require("crypto");
-const { tavily } = require("@tavily/core");
 
 const app = express();
 const port = 3000;
@@ -10,9 +9,8 @@ const CONTENTS_PER_TYPE = 14;
 const MAX_EVENTS_PER_SESSION = 5000;
 const INITIAL_FEED_SIZE = 6;
 const FEED_SIZE = 16;
-const TAVILY_DEFAULT_KEY = "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";
-const tavilyApiKey = process.env.TAVILY_API_KEY || TAVILY_DEFAULT_KEY;
-const tavilyClient = tavilyApiKey ? tavily({ apiKey: tavilyApiKey }) : null;
+const TAVILY_MAX_RESULTS = 10;
+const DISPLAY_RESULTS_COUNT = 5;
 
 app.use(express.json({ limit: "512kb" }));
 app.use((req, res, next) => {
@@ -30,8 +28,256 @@ const topicWorlds = [
   { id: "future-tech", title: "How Is Future Tech Rewriting Daily Life?", seed: "Future Technology" },
   { id: "emotion-story", title: "Why Do Emotional Stories Shape Big Decisions?", seed: "Emotion and Life" },
   { id: "business-logic", title: "What Actually Builds a Strong Business Edge?", seed: "Business Logic" },
-  { id: "media-culture", title: "Why Do Media Narratives Spread So Fast?", seed: "Media and Culture" },
 ];
+
+const PRESET_TOPIC_SOURCES = {
+  "future-tech": [
+    {
+      id: "future-tech-yt-1",
+      type: "knowledge",
+      platform: "video",
+      title: "14 Technologies Redefining the Future of Human Civilization",
+      content: "Documentary style overview with authoritative narration on future technology shifts.",
+      url: "https://www.youtube.com/watch?v=bQCtMzx8ndk",
+    },
+    {
+      id: "future-tech-yt-2",
+      type: "entertainment",
+      platform: "video",
+      title: "2026 Will Be Ruled by These 20 New Tech Trends",
+      content: "Fast-paced countdown format with dramatic framing for broad audiences.",
+      url: "https://www.youtube.com/watch?v=uUdDQSb5Jqo",
+    },
+    {
+      id: "future-tech-yt-3",
+      type: "entertainment",
+      platform: "video",
+      title: "The 20 Inventions That Will Change Your Life in 2026",
+      content: "Curiosity-driven storytelling around emerging inventions and everyday impact.",
+      url: "https://www.youtube.com/watch?v=spaANAN0U5s",
+    },
+    {
+      id: "future-tech-yt-4",
+      type: "knowledge",
+      platform: "video",
+      title: "9 Breakthrough Technologies That Will Change the World in 2025",
+      content: "Serious explainer style aimed at technology enthusiasts and trend tracking.",
+      url: "https://www.youtube.com/watch?v=4SzeWVaSNxE",
+    },
+    {
+      id: "future-tech-yt-5",
+      type: "entertainment",
+      platform: "video",
+      title: "The Rise of AI-Powered Robotics in 2025 (Your Life Will NOT Be The Same)",
+      content: "Sensational framing focused on mainstream excitement around AI robotics.",
+      url: "https://www.youtube.com/watch?v=OSwcP_FDNeo",
+    },
+    {
+      id: "future-tech-media-6",
+      type: "knowledge",
+      platform: "media",
+      title: "10 Breakthrough Technologies 2025",
+      content: "MIT Technology Review annual list with high-authority editorial perspective.",
+      url: "https://www.technologyreview.com/2025/01/03/1109178/10-breakthrough-technologies-2025/",
+    },
+    {
+      id: "future-tech-media-7",
+      type: "knowledge",
+      platform: "media",
+      title: "What's Next for AI in 2026",
+      content: "Forward-looking analysis from MIT Technology Review on near-term AI direction.",
+      url: "https://www.technologyreview.com/2026/01/05/1130662/whats-next-for-ai-in-2026/",
+    },
+    {
+      id: "future-tech-media-8",
+      type: "knowledge",
+      platform: "media",
+      title: "10 Things That Matter in AI Right Now (2026)",
+      content: "Interactive long-form coverage of robotics, deepfakes, and military AI trends.",
+      url: "https://www.technologyreview.com/2026/04/21/1135643/10-ai-artificial-intelligence-trends-technologies-research-2026/",
+    },
+    {
+      id: "future-tech-media-9",
+      type: "knowledge",
+      platform: "media",
+      title: "The Future of AI: How AI Is Changing the World",
+      content: "Business and technology lens with enterprise examples and industry references.",
+      url: "https://builtin.com/artificial-intelligence/artificial-intelligence-future",
+    },
+    {
+      id: "future-tech-social-10",
+      type: "social",
+      platform: "social",
+      title: "r/Futurology: technology future daily life (Top, Year)",
+      content: "Community discussion feed capturing high-engagement public predictions.",
+      url: "https://www.reddit.com/r/Futurology/search/?q=technology+future+daily+life&sort=top&t=year",
+    },
+  ],
+  "emotion-story": [
+    {
+      id: "emotion-story-yt-1",
+      type: "emotion",
+      platform: "video",
+      title: "The Psychology of Storytelling",
+      content: "Provocative opener questioning why stories influence judgment so strongly.",
+      url: "https://www.youtube.com/watch?v=LSbfYmwF7lo",
+    },
+    {
+      id: "emotion-story-yt-2",
+      type: "emotion",
+      platform: "video",
+      title: "Power of Emotional Storytelling",
+      content: "Talk format emphasizing that audiences remember feelings more than facts.",
+      url: "https://www.youtube.com/watch?v=CyoB6VVAW0Q",
+    },
+    {
+      id: "emotion-story-yt-3",
+      type: "emotion",
+      platform: "video",
+      title: "The Magical Science of Storytelling",
+      content: "Widely cited TEDx style explanation linking storytelling to brain chemistry.",
+      url: "https://www.youtube.com/watch?v=Nj-hdQMa3uA",
+    },
+    {
+      id: "emotion-story-yt-4",
+      type: "emotion",
+      platform: "video",
+      title: "The Psychology of Effective Storytelling",
+      content: "Practical interview format focused on narrative structure and persuasion.",
+      url: "https://www.youtube.com/watch?v=XfsrQDHp-LY",
+    },
+    {
+      id: "emotion-story-media-5",
+      type: "emotion",
+      platform: "media",
+      title: "Emotional Decision Making: Hardwired and Helpful",
+      content: "Law and neuroscience crossover perspective on emotion in judgment.",
+      url: "https://law.temple.edu/aer/2024/09/07/emotional-decision-making-hardwired-and-helpful/",
+    },
+    {
+      id: "emotion-story-media-6",
+      type: "emotion",
+      platform: "media",
+      title: "Why Your Brain Needs Stories",
+      content: "Narrative neuroscience article discussing synchrony and cognitive engagement.",
+      url: "https://medium.com/a-more-perfect-story/why-your-brain-needs-stories-93c9e267421d",
+    },
+    {
+      id: "emotion-story-media-7",
+      type: "emotion",
+      platform: "media",
+      title: "How Stories Change the Brain",
+      content: "Classic Greater Good synthesis of research on storytelling and oxytocin.",
+      url: "https://greatergood.berkeley.edu/article/item/how_stories_change_brain",
+    },
+    {
+      id: "emotion-story-media-8",
+      type: "emotion",
+      platform: "media",
+      title: "The Neuroscience of Storytelling: How Leaders Can Build Lasting Connections",
+      content: "Leadership-focused interpretation of emotional storytelling impact.",
+      url: "https://www.disrupts.com/news/the-neuroscience-of-storytelling-how-leaders-can-build-lasting-connections",
+    },
+    {
+      id: "emotion-story-media-9",
+      type: "knowledge",
+      platform: "media",
+      title: "Storytelling Statistics 2025: 94+ Stats and Insights",
+      content: "Data-heavy source for persuasion, recall, and audience response benchmarks.",
+      url: "https://marketingltb.com/blog/statistics/storytelling-statistics/",
+    },
+    {
+      id: "emotion-story-social-10",
+      type: "social",
+      platform: "social",
+      title: "r/marketing: emotional storytelling decisions (Top, Year)",
+      content: "Practitioner discussion around emotional narrative in real campaigns.",
+      url: "https://www.reddit.com/r/marketing/search/?q=emotional+storytelling+decisions&sort=top&t=year",
+    },
+  ],
+  "business-logic": [
+    {
+      id: "business-logic-yt-1",
+      type: "knowledge",
+      platform: "video",
+      title: "Warren Buffett: Competitive Advantage Analysis and Moat Investing",
+      content: "Structured breakdown of moat categories and investment logic.",
+      url: "https://www.youtube.com/watch?v=kn_XieEuvKM",
+    },
+    {
+      id: "business-logic-yt-2",
+      type: "knowledge",
+      platform: "video",
+      title: "Coca-Cola's Brand Power and Moat Explained",
+      content: "Case-study narrative combining brand strategy with defensibility metrics.",
+      url: "https://www.youtube.com/watch?v=dmoASUTVHhQ",
+    },
+    {
+      id: "business-logic-yt-3",
+      type: "knowledge",
+      platform: "video",
+      title: "Warren Buffett: How To Find Economic Moats",
+      content: "Hands-on guidance for identifying durable competitive advantages.",
+      url: "https://www.youtube.com/watch?v=bLq17MUD1Uo",
+    },
+    {
+      id: "business-logic-media-4",
+      type: "knowledge",
+      platform: "media",
+      title: "When Every Company Can Use the Same AI Models, Context Becomes a Competitive Advantage",
+      content: "HBR argument that organizational context becomes the moat in AI parity.",
+      url: "https://hbr.org/2026/02/when-every-company-can-use-the-same-ai-models-context-becomes-a-competitive-advantage",
+    },
+    {
+      id: "business-logic-media-5",
+      type: "knowledge",
+      platform: "media",
+      title: "The Key to Sustaining an Enduring Competitive Advantage",
+      content: "Strategy podcast perspective on long-run advantage maintenance.",
+      url: "https://hbr.org/podcast/2025/02/the-key-to-sustaining-an-enduring-competitive-advantage",
+    },
+    {
+      id: "business-logic-media-6",
+      type: "knowledge",
+      platform: "media",
+      title: "Strategy's Biggest Blind Spot: Erosion of Competitive Advantage",
+      content: "McKinsey analysis highlighting moat decay and executive blind spots.",
+      url: "https://www.mckinsey.com/capabilities/strategy-and-corporate-finance/our-insights/strategys-biggest-blind-spot-erosion-of-competitive-advantage",
+    },
+    {
+      id: "business-logic-media-7",
+      type: "knowledge",
+      platform: "media",
+      title: "How Top Economic Performers Lean into Their Competitive Advantage to Guide Their Strategy",
+      content: "McKinsey report on using AI and data loops to scale strategic edge.",
+      url: "https://www.mckinsey.com/capabilities/strategy-and-corporate-finance/our-insights/how-top-economic-performers-lean-into-their-competitive-advantage-to-guide-their-strategy",
+    },
+    {
+      id: "business-logic-media-8",
+      type: "knowledge",
+      platform: "media",
+      title: "How to Build Your Competitive Moat in 2025",
+      content: "Startup-oriented framework with practical moat-building examples.",
+      url: "https://waveup.com/blog/how-to-build-your-competitive-moat/",
+    },
+    {
+      id: "business-logic-media-9",
+      type: "knowledge",
+      platform: "media",
+      title: "Economic Moats: How To Build a Competitive Advantage",
+      content: "Execution-focused guide comparing frameworks for defensibility.",
+      url: "https://cxl.com/blog/economic-moats/",
+    },
+    {
+      id: "business-logic-social-10",
+      type: "social",
+      platform: "social",
+      title: "r/entrepreneur: competitive advantage moat (Top, Year)",
+      content: "Ground-level founder discussion on real moat trade-offs and tactics.",
+      url: "https://www.reddit.com/r/entrepreneur/search/?q=competitive+advantage+moat&sort=top&t=year",
+    },
+  ],
+};
 
 const typeConfig = [
   {
@@ -82,7 +328,32 @@ const titleModes = ["statement", "suspense", "emphasis"];
 const sessions = new Map();
 const completedSessions = [];
 const topicSourceCache = new Map();
+const tavilyDebugState = {
+  latest: null,
+  history: [],
+};
 let sessionCounter = 0;
+
+function toIsoNow() {
+  return new Date().toISOString();
+}
+
+function sourceDebugPreview(sources) {
+  return (Array.isArray(sources) ? sources : []).map((item, index) => ({
+    index: index + 1,
+    title: item.title || "",
+    url: item.url || "",
+    content: compactText(item.content || "", 240),
+  }));
+}
+
+function recordTavilyDebug(debugEntry) {
+  tavilyDebugState.latest = debugEntry;
+  tavilyDebugState.history.push(debugEntry);
+  if (tavilyDebugState.history.length > 24) {
+    tavilyDebugState.history.splice(0, tavilyDebugState.history.length - 24);
+  }
+}
 
 function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];
@@ -152,6 +423,10 @@ function compactText(value, maxLength) {
   return normalized.slice(0, maxLength - 3) + "...";
 }
 
+function normalizeSourceText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
 function sanitizeSourceUrl(value) {
   const raw = String(value || "").trim();
   if (!raw) {
@@ -160,47 +435,90 @@ function sanitizeSourceUrl(value) {
   if (raw.startsWith("http://") || raw.startsWith("https://")) {
     return raw;
   }
+  if (raw.startsWith("www.")) {
+    return "https://" + raw;
+  }
   return "";
 }
 
+function shuffledPick(list, count) {
+  const pool = Array.isArray(list) ? list.slice() : [];
+  for (let i = pool.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const temp = pool[i];
+    pool[i] = pool[j];
+    pool[j] = temp;
+  }
+  return pool.slice(0, Math.max(0, count));
+}
+
 async function fetchTopicSources(topic) {
-  const cacheKey = topic.id;
+  const cacheKey = topic.id + "::" + topic.title;
+  const debugEntry = {
+    kind: "preset_topic_fetch",
+    createdAt: toIsoNow(),
+    sourceMode: "preset_template",
+    topic: {
+      id: topic.id,
+      title: topic.title,
+      seed: topic.seed,
+    },
+    cacheKey,
+    cacheHit: false,
+    templateReady: true,
+    maxResults: TAVILY_MAX_RESULTS,
+    selectedTemplate: topic.id,
+    sourceCount: 0,
+    sourcePreview: [],
+    status: "pending",
+  };
+
   if (topicSourceCache.has(cacheKey)) {
-    return topicSourceCache.get(cacheKey);
+    const cached = topicSourceCache.get(cacheKey) || [];
+    debugEntry.cacheHit = true;
+    debugEntry.status = cached.length ? "cache_hit_with_results" : "cache_hit_empty";
+    debugEntry.sourceCount = cached.length;
+    debugEntry.sourcePreview = sourceDebugPreview(cached);
+    debugEntry.finishedAt = toIsoNow();
+    recordTavilyDebug(debugEntry);
+    return {
+      sources: cached,
+      debug: debugEntry,
+    };
   }
 
-  if (!tavilyClient) {
-    topicSourceCache.set(cacheKey, []);
-    return [];
-  }
+  const preset = Array.isArray(PRESET_TOPIC_SOURCES[topic.id]) ? PRESET_TOPIC_SOURCES[topic.id] : [];
+  const normalized = preset
+    .map((item, index) => {
+      const url = sanitizeSourceUrl(item?.url);
+      if (!url) {
+        return null;
+      }
+      const type = typeof item?.type === "string" ? item.type : "knowledge";
+      return {
+        id: item?.id || `${topic.id}_preset_${index + 1}`,
+        type: isValidType(type) ? type : "knowledge",
+        title: normalizeSourceText(item?.title),
+        content: normalizeSourceText(item?.content),
+        url,
+        favicon: sanitizeSourceUrl(item?.favicon || ""),
+        platform: item?.platform || "web",
+        depthLevel: 1 + (index % 5),
+      };
+    })
+    .filter(Boolean)
+    .slice(0, TAVILY_MAX_RESULTS);
 
-  const query = `i want to seach ${topic.title}`;
-  try {
-    const response = await tavilyClient.search(query, {
-      searchDepth: "advanced",
-      maxResults: 8,
-      chunksPerSource: 1,
-    });
-    const normalized = Array.isArray(response?.results)
-      ? response.results
-          .map((item) => {
-            return {
-              url: sanitizeSourceUrl(item?.url),
-              title: compactText(item?.title || "", 120),
-              content: compactText(item?.content || "", 220),
-              favicon: sanitizeSourceUrl(item?.favicon),
-            };
-          })
-          .filter((item) => item.url)
-      : [];
-
-    topicSourceCache.set(cacheKey, normalized);
-    return normalized;
-  } catch (error) {
-    console.warn("Tavily fetch failed:", topic.title, error?.message || error);
-    topicSourceCache.set(cacheKey, []);
-    return [];
-  }
+  topicSourceCache.set(cacheKey, normalized);
+  debugEntry.sourceCount = normalized.length;
+  debugEntry.sourcePreview = sourceDebugPreview(normalized);
+  debugEntry.status = normalized.length ? "ok_preset" : "missing_preset";
+  debugEntry.finishedAt = toIsoNow();
+  recordTavilyDebug(debugEntry);
+  return {
+    sources: normalized,
+    debug: debugEntry,
+  };
 }
 
 function enrichContentPoolWithSources(contentPool, topic, sourceList) {
@@ -363,21 +681,15 @@ function normalize(value, min, max) {
 }
 
 function buildTrajectory(session) {
-  const clicks = session.events.filter((item) => item.eventType === "click");
-  const typeAxis = {
-    knowledge: 15,
-    emotion: 45,
-    entertainment: 70,
-    social: 90,
-  };
-  const points = clicks.map((click, index) => {
-    const elapsedSec = Math.max(0, (click.ts - session.startedAt) / 1000);
+  const events = session.events.filter((item) => item && item.eventType && item.eventType !== "impression");
+  const points = events.map((event, index) => {
+    const elapsedSec = Math.max(0, (event.ts - session.startedAt) / 1000);
     return {
       index: index + 1,
       elapsedSec,
-      y: typeAxis[click.contentType] || 50,
-      contentId: click.contentId,
-      contentType: click.contentType,
+      eventType: event.eventType,
+      contentId: event.contentId,
+      contentType: event.contentType,
     };
   });
   return points;
@@ -572,21 +884,46 @@ app.get("/api/topics", (req, res) => {
 app.post("/api/session/start", async (req, res) => {
   const topicId = typeof req.body?.topicId === "string" ? req.body.topicId : "";
   const session = createSession(topicId);
-  const sources = await fetchTopicSources(session.topic);
+  const sourceResult = await fetchTopicSources(session.topic);
+  const sources = Array.isArray(sourceResult?.sources) ? sourceResult.sources : [];
   session.contentPool = enrichContentPoolWithSources(session.contentPool, session.topic, sources);
   const feed = buildFeed(session, INITIAL_FEED_SIZE, false);
-  const searchKeyword = `i want to seach ${session.topic.title}`;
+  const searchKeyword = `i want to search ${session.topic.title}`;
+  const limitedSources = sources.slice(0, TAVILY_MAX_RESULTS);
   res.json({
     ok: true,
     sessionId: session.sessionId,
     topic: session.topic,
     searchKeyword,
-    sourceCount: sources.length,
-    searchResults: sources.slice(0, 5),
+    sourceCount: limitedSources.length,
+    searchResults: limitedSources,
+    displayResults: shuffledPick(limitedSources, DISPLAY_RESULTS_COUNT),
     durationSeconds: SESSION_DURATION_SECONDS,
     contentPool: session.contentPool,
     feed,
     startedAt: session.startedAt,
+    tavilyDebug: sourceResult?.debug || null,
+  });
+});
+
+app.get("/api/debug/tavily", (req, res) => {
+  res.json({
+    ok: true,
+    sourceMode: "preset_template",
+    latest: tavilyDebugState.latest,
+    history: tavilyDebugState.history.slice().reverse(),
+    cacheKeys: Array.from(topicSourceCache.keys()),
+    cacheSize: topicSourceCache.size,
+    availableTopics: topicWorlds.map((item) => item.id),
+  });
+});
+
+app.post("/api/debug/tavily/clear-cache", (req, res) => {
+  topicSourceCache.clear();
+  res.json({
+    ok: true,
+    message: "Topic source cache cleared.",
+    cacheSize: topicSourceCache.size,
   });
 });
 
@@ -819,8 +1156,8 @@ function renderWbtiPage() {
     }
     .search-layout {
       min-height: 520px;
-      display: grid;
-      align-content: start;
+      display: flex;
+      flex-direction: column;
     }
     .search-hero {
       text-align: center;
@@ -836,8 +1173,8 @@ function renderWbtiPage() {
       padding: 8px;
     }
     .timer-row {
-      margin: 10px auto 0;
-      width: min(760px, 100%);
+      flex: 1;
+      width: 100%;
     }
     .timer-track {
       width: 100%;
@@ -858,6 +1195,17 @@ function renderWbtiPage() {
       font-size: 0.85rem;
       color: #64748b;
       text-align: right;
+    }
+    .search-bottom {
+      margin-top: auto;
+      padding-top: 14px;
+      border-top: 1px dashed var(--line);
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+    .search-bottom button {
+      white-space: nowrap;
     }
     .search-row {
       display: flex;
@@ -880,6 +1228,51 @@ function renderWbtiPage() {
       border-radius: 14px;
       background: #f8fbff;
       padding: 12px;
+    }
+    .debug-shell {
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #ffffff;
+      padding: 10px;
+    }
+    .debug-shell summary {
+      cursor: pointer;
+      font-weight: 700;
+      color: #334155;
+    }
+    .debug-actions {
+      margin-top: 10px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .debug-mini-btn {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #0f172a;
+      font-size: 0.82rem;
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    .debug-mini-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .debug-json {
+      margin-top: 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #0f172a;
+      color: #e2e8f0;
+      font-size: 0.78rem;
+      line-height: 1.45;
+      padding: 10px;
+      max-height: 280px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
     }
     .cards-grid {
       margin-top: 8px;
@@ -956,10 +1349,35 @@ function renderWbtiPage() {
       line-height: 1.6;
       white-space: pre-wrap;
     }
+    .modal-preview-shell {
+      margin-top: 12px;
+    }
+    .modal-preview {
+      width: 100%;
+      height: 420px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f8fbff;
+    }
     .source-link {
       margin-top: 12px;
       word-break: break-all;
       font-size: 0.9rem;
+    }
+    .related-links {
+      margin-top: 12px;
+      border-top: 1px dashed var(--line);
+      padding-top: 10px;
+      display: grid;
+      gap: 6px;
+    }
+    .related-links a {
+      color: #2563eb;
+      text-decoration: none;
+      font-size: 0.92rem;
+    }
+    .related-links a:hover {
+      text-decoration: underline;
     }
     .report-grid {
       margin-top: 14px;
@@ -1030,6 +1448,13 @@ function renderWbtiPage() {
       .report-grid {
         grid-template-columns: 1fr;
       }
+      .search-bottom {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      .search-bottom button {
+        align-self: flex-end;
+      }
     }
   </style>
 </head>
@@ -1054,7 +1479,7 @@ function renderWbtiPage() {
         <div>
           <div class="spinner"></div>
           <h2 style="margin-top:14px;">Gathering Real Sources...</h2>
-          <p id="loadingText" class="muted">Running Tavily search.</p>
+          <p id="loadingText" class="muted">Loading preset source pack.</p>
         </div>
       </div>
     </section>
@@ -1066,20 +1491,31 @@ function renderWbtiPage() {
           <p class="muted">Bing-style start page. Search within fetched sources.</p>
           <div class="search-box-wrap">
             <div class="search-row">
-              <input id="searchInput" class="search-input" type="text" placeholder="Search in current Tavily results..." />
+              <input id="searchInput" class="search-input" type="text" placeholder="Search inside current source pack..." />
               <button id="searchBtn" class="ghost" type="button">Search</button>
-              <button id="endTestBtn" type="button">End Test</button>
               <button id="backBtn" class="ghost" type="button">Back</button>
             </div>
           </div>
+        </div>
+        <div class="cards-wrap">
+          <p class="muted" style="margin-top:0;">Random 5 from 10 preset sources</p>
+          <div id="cardsGrid" class="cards-grid"></div>
+          <details id="tavilyDebugShell" class="debug-shell">
+            <summary>Source Debug</summary>
+            <div class="debug-actions">
+              <button id="refreshDebugBtn" class="debug-mini-btn" type="button">Refresh Debug</button>
+              <button id="clearCacheDebugBtn" class="debug-mini-btn" type="button">Clear Cache</button>
+            </div>
+            <p id="debugStatus" class="muted">No debug data yet.</p>
+            <pre id="debugJson" class="debug-json">{}</pre>
+          </details>
+        </div>
+        <div class="search-bottom">
           <div class="timer-row">
             <div class="timer-track"><div id="timerFill" class="timer-fill"></div></div>
             <div id="timerText" class="timer-text">Time left: 05:00</div>
           </div>
-        </div>
-        <div class="cards-wrap">
-          <p class="muted" style="margin-top:0;">Top 5 Tavily results</p>
-          <div id="cardsGrid" class="cards-grid"></div>
+          <button id="endTestBtn" type="button">End Test</button>
         </div>
       </div>
     </section>
@@ -1097,7 +1533,7 @@ function renderWbtiPage() {
           <h3>Radar Profile</h3>
           <p id="mbtiText" class="muted"></p>
           <svg id="radarSvg" viewBox="0 0 320 240"></svg>
-          <h3 style="margin-top:12px;">Click Frequency Timeline</h3>
+          <h3 style="margin-top:12px;">Operation Timeline</h3>
           <svg id="trajectorySvg" viewBox="0 0 640 240" preserveAspectRatio="none"></svg>
           <div class="poster-shell">
             <h3>Share Poster</h3>
@@ -1124,10 +1560,14 @@ function renderWbtiPage() {
       </div>
       <p id="modalMeta" class="muted"></p>
       <div id="modalContent" class="modal-content"></div>
+      <div class="modal-preview-shell">
+        <iframe id="modalPreview" class="modal-preview" loading="lazy" referrerpolicy="no-referrer" sandbox="allow-same-origin allow-scripts allow-forms allow-popups"></iframe>
+      </div>
       <div class="source-link">
         Source:
         <a id="modalLink" href="#" target="_blank" rel="noreferrer">Open original page</a>
       </div>
+      <div id="modalRelated" class="related-links"></div>
     </div>
   </div>
 
@@ -1150,6 +1590,11 @@ function renderWbtiPage() {
       const timerFill = document.getElementById("timerFill");
       const timerText = document.getElementById("timerText");
       const cardsGrid = document.getElementById("cardsGrid");
+      const tavilyDebugShell = document.getElementById("tavilyDebugShell");
+      const refreshDebugBtn = document.getElementById("refreshDebugBtn");
+      const clearCacheDebugBtn = document.getElementById("clearCacheDebugBtn");
+      const debugStatus = document.getElementById("debugStatus");
+      const debugJson = document.getElementById("debugJson");
       const reportHeader = document.getElementById("reportHeader");
       const personaText = document.getElementById("personaText");
       const explainText = document.getElementById("explainText");
@@ -1165,7 +1610,9 @@ function renderWbtiPage() {
       const modalTitle = document.getElementById("modalTitle");
       const modalMeta = document.getElementById("modalMeta");
       const modalContent = document.getElementById("modalContent");
+      const modalPreview = document.getElementById("modalPreview");
       const modalLink = document.getElementById("modalLink");
+      const modalRelated = document.getElementById("modalRelated");
       const closeModalBtn = document.getElementById("closeModalBtn");
 
       const state = {
@@ -1177,6 +1624,8 @@ function renderWbtiPage() {
         timerId: null,
         finishing: false,
         result: null,
+        tavilyDebug: null,
+        allCards: [],
         cards: [],
         visibleCards: [],
       };
@@ -1198,6 +1647,64 @@ function renderWbtiPage() {
         return payload;
       }
 
+      function stringifyDebug(value) {
+        try {
+          return JSON.stringify(value, null, 2);
+        } catch (error) {
+          return String(value);
+        }
+      }
+
+      function renderTavilyDebug(payload, sourceLabel) {
+        state.tavilyDebug = payload || null;
+        const latest = payload && payload.latest ? payload.latest : payload;
+        const sourceCount = latest && typeof latest.sourceCount === "number" ? latest.sourceCount : 0;
+        const status = latest && latest.status ? latest.status : "unknown";
+        const from = sourceLabel ? sourceLabel + " " : "";
+        const detail =
+          latest && latest.selectedTemplate
+            ? " | template: " + latest.selectedTemplate
+            : latest && latest.selectedQuery
+              ? " | query: " + latest.selectedQuery
+              : "";
+        debugStatus.textContent = from + "status: " + status + " | sources: " + sourceCount + detail;
+        debugJson.textContent = stringifyDebug(payload || {});
+      }
+
+      async function refreshTavilyDebug() {
+        refreshDebugBtn.disabled = true;
+        const original = refreshDebugBtn.textContent;
+        refreshDebugBtn.textContent = "Refreshing...";
+        try {
+          const payload = await request("/api/debug/tavily?ts=" + Date.now());
+          renderTavilyDebug(payload, "Live");
+        } catch (error) {
+          debugStatus.textContent = "Live debug fetch failed: " + String(error.message || error);
+        } finally {
+          refreshDebugBtn.disabled = false;
+          refreshDebugBtn.textContent = original;
+        }
+      }
+
+      async function clearTavilyCache() {
+        clearCacheDebugBtn.disabled = true;
+        const original = clearCacheDebugBtn.textContent;
+        clearCacheDebugBtn.textContent = "Clearing...";
+        try {
+          await request("/api/debug/tavily/clear-cache", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          await refreshTavilyDebug();
+        } catch (error) {
+          debugStatus.textContent = "Clear cache failed: " + String(error.message || error);
+        } finally {
+          clearCacheDebugBtn.disabled = false;
+          clearCacheDebugBtn.textContent = original;
+        }
+      }
+
       async function loadTopics() {
         const payload = await request("/api/topics");
         state.topics = payload.topics || [];
@@ -1210,6 +1717,49 @@ function renderWbtiPage() {
         state.topic = state.topics[0];
         selectedTopicTitle.textContent = state.topic.title;
         renderTopicOptions();
+      }
+
+      function shuffledPickLocal(list, count) {
+        const pool = Array.isArray(list) ? list.slice() : [];
+        for (let i = pool.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const temp = pool[i];
+          pool[i] = pool[j];
+          pool[j] = temp;
+        }
+        return pool.slice(0, Math.max(0, count));
+      }
+
+      function toCard(item) {
+        const url = sanitizeExternalUrl(item && item.url);
+        if (!url) return null;
+        return {
+          id: url,
+          title: String(item && item.title ? item.title : "").trim() || "Untitled source",
+          content: String(item && item.content ? item.content : "").trim() || "No content snippet available.",
+          url,
+          favicon: sanitizeExternalUrl(item && item.favicon),
+          source: "preset",
+          type: "knowledge",
+          depthLevel: 1,
+        };
+      }
+
+      function applyTavilyResults(searchResults, displayResults) {
+        const allCards = (Array.isArray(searchResults) ? searchResults : [])
+          .map((item) => toCard(item))
+          .filter(Boolean);
+        const fallbackDisplay = shuffledPickLocal(allCards, 5);
+        const targetDisplaySource =
+          Array.isArray(displayResults) && displayResults.length ? displayResults : fallbackDisplay;
+        const visibleCards = targetDisplaySource
+          .map((item) => toCard(item))
+          .filter(Boolean)
+          .slice(0, 5);
+
+        state.allCards = allCards;
+        state.cards = visibleCards;
+        state.visibleCards = visibleCards.slice();
       }
 
       function renderTopicOptions() {
@@ -1237,7 +1787,7 @@ function renderWbtiPage() {
           return;
         }
         setStage(loadingStage);
-        loadingText.textContent = "Running Tavily search for: i want to seach " + state.topic.title;
+        loadingText.textContent = "Loading preset sources for: " + state.topic.title;
 
         const payload = await request("/api/session/start", {
           method: "POST",
@@ -1250,47 +1800,18 @@ function renderWbtiPage() {
         state.startedAt = payload.startedAt || Date.now();
         state.durationSeconds = payload.durationSeconds || 300;
         searchTopicTitle.textContent = payload.topic.title;
-
-        const bySource = new Map();
-        const topFromTavily = Array.isArray(payload.searchResults) ? payload.searchResults : [];
-        for (const item of topFromTavily) {
-          const url = String(item.url || "").trim();
-          if (!url || bySource.has(url)) continue;
-          bySource.set(url, {
-            id: url,
-            title: item.title || "Untitled source",
-            content: item.content || "No content snippet available.",
-            url,
-            favicon: item.favicon || "",
-            source: "tavily",
-          });
-        }
-
-        if (bySource.size < 5 && Array.isArray(payload.contentPool)) {
-          for (const content of payload.contentPool) {
-            const url = String(content.sourceUrl || "").trim();
-            if (!url || bySource.has(url)) continue;
-            bySource.set(url, {
-              id: content.id,
-              title: content.sourceTitle || content.title || "Untitled source",
-              content: content.sourceSnippet || content.summary || "No content snippet available.",
-              url,
-              favicon: content.sourceFavicon || "",
-              source: "pool",
-              type: content.type || "",
-              depthLevel: content.depthLevel || 1,
-            });
-            if (bySource.size >= 5) break;
+        applyTavilyResults(payload.searchResults, payload.displayResults);
+        if (payload.tavilyDebug) {
+          renderTavilyDebug(payload.tavilyDebug, "Start");
+          if (!state.allCards.length) {
+            tavilyDebugShell.open = true;
           }
         }
-
-        state.cards = Array.from(bySource.values()).slice(0, 5);
-        state.visibleCards = state.cards.slice();
 
         if (payload.searchKeyword) {
           searchInput.value = payload.searchKeyword;
         } else {
-          searchInput.value = "i want to seach " + payload.topic.title;
+          searchInput.value = "i want to search " + payload.topic.title;
         }
         renderCards();
         setStage(searchStage);
@@ -1299,7 +1820,11 @@ function renderWbtiPage() {
 
       function renderCards() {
         if (!state.visibleCards.length) {
-          cardsGrid.innerHTML = "<div class='empty'>No matching result. Try another keyword.</div>";
+          if (!state.allCards.length) {
+            cardsGrid.innerHTML = "<div class='empty'>No preset sources available for this topic.</div>";
+          } else {
+            cardsGrid.innerHTML = "<div class='empty'>No matching result in current source pack.</div>";
+          }
           return;
         }
         cardsGrid.innerHTML = state.visibleCards
@@ -1340,16 +1865,47 @@ function renderWbtiPage() {
         }
       }
 
-      function applyKeywordFilter() {
-        const keyword = searchInput.value.trim().toLowerCase();
-        if (!keyword) {
-          state.visibleCards = state.cards.slice();
-        } else {
-          state.visibleCards = state.cards.filter((item) => {
-            const haystack = (item.title + " " + item.content + " " + item.url).toLowerCase();
-            return haystack.includes(keyword);
-          });
+      function sanitizeExternalUrl(value) {
+        const raw = String(value || "").trim();
+        if (!raw) return "";
+        if (raw.startsWith("http://") || raw.startsWith("https://")) {
+          return raw;
         }
+        if (raw.startsWith("www.")) {
+          return "https://" + raw;
+        }
+        return "";
+      }
+
+      function renderRelatedLinks(currentId) {
+        const related = shuffledPickLocal(
+          state.allCards.filter((item) => item.id !== currentId && sanitizeExternalUrl(item.url)),
+          3,
+        );
+        if (!related.length) {
+          modalRelated.innerHTML = "<div class='muted' style='margin-top:0;'>No related preset links.</div>";
+          return;
+        }
+        modalRelated.innerHTML =
+          "<div class='muted' style='margin-top:0;'>Related from source pack</div>" +
+          related
+            .map((item) => {
+              return "<a href='" + escapeHtml(item.url) + "' target='_blank' rel='noreferrer'>" + escapeHtml(item.title) + "</a>";
+            })
+            .join("");
+      }
+
+      function applyKeywordFilter(keyword) {
+        const cleanKeyword = String(keyword || "").trim().toLowerCase();
+        if (!cleanKeyword) {
+          state.visibleCards = state.cards.slice();
+          renderCards();
+          return;
+        }
+        state.visibleCards = state.allCards.filter((item) => {
+          const haystack = (item.title + " " + item.content + " " + item.url).toLowerCase();
+          return haystack.includes(cleanKeyword);
+        });
         renderCards();
       }
 
@@ -1374,7 +1930,14 @@ function renderWbtiPage() {
         modalTitle.textContent = item.title || "Untitled source";
         modalMeta.textContent = hostnameOf(item.url);
         modalContent.textContent = item.content || "No content snippet available.";
-        modalLink.href = item.url || "#";
+        const safeUrl = sanitizeExternalUrl(item.url);
+        modalLink.href = safeUrl || "#";
+        if (safeUrl) {
+          modalPreview.src = safeUrl;
+        } else {
+          modalPreview.removeAttribute("src");
+        }
+        renderRelatedLinks(item.id);
         resultModal.classList.add("active");
 
         if (state.sessionId) {
@@ -1520,44 +2083,129 @@ function renderWbtiPage() {
       function drawTrajectory(points, durationSeconds) {
         const width = 640;
         const height = 240;
-        const padX = 44;
-        const padY = 24;
+        const padX = 36;
+        const padY = 22;
         const plotW = width - padX * 2;
-        const plotH = height - padY * 2;
+        const timelineY = 94;
+        const eventStyles = {
+          click: { label: "Click", color: "#2563eb" },
+          search: { label: "Search", color: "#0ea5e9" },
+          dwell_end: { label: "Read End", color: "#14b8a6" },
+          scroll: { label: "Scroll", color: "#f59e0b" },
+          share: { label: "Share", color: "#ec4899" },
+          comment: { label: "Comment", color: "#9333ea" },
+          bookmark: { label: "Bookmark", color: "#22c55e" },
+          backtrack: { label: "Backtrack", color: "#ef4444" },
+        };
         const base =
           "<rect x='0' y='0' width='" + width + "' height='" + height + "' fill='#f8fbff'/>" +
-          "<line x1='" + padX + "' y1='" + (height - padY) + "' x2='" + (width - padX) + "' y2='" + (height - padY) + "' stroke='#d9e2ef'/>" +
-          "<line x1='" + padX + "' y1='" + padY + "' x2='" + padX + "' y2='" + (height - padY) + "' stroke='#d9e2ef'/>";
+          "<line x1='" + padX + "' y1='" + timelineY + "' x2='" + (width - padX) + "' y2='" + timelineY + "' stroke='#d9e2ef'/>";
         if (!Array.isArray(points) || points.length < 1) {
-          trajectorySvg.innerHTML = base + "<text x='320' y='120' text-anchor='middle' fill='#64748b' font-size='13'>Not enough click data for trajectory.</text>";
+          trajectorySvg.innerHTML = base + "<text x='320' y='120' text-anchor='middle' fill='#64748b' font-size='13'>No operation data in this session.</text>";
           return;
         }
 
-        const bins = 20;
         const safeDuration = Math.max(1, Number(durationSeconds || 300));
-        const binSeconds = safeDuration / bins;
-        const counts = new Array(bins).fill(0);
-        for (const point of points) {
-          const elapsed = Math.max(0, Number(point.elapsedSec || 0));
-          const idx = Math.min(bins - 1, Math.floor(elapsed / binSeconds));
-          counts[idx] += 1;
+        const ticks = 6;
+        const tickMarks = [];
+        for (let i = 0; i < ticks; i += 1) {
+          const ratio = i / (ticks - 1);
+          const elapsed = ratio * safeDuration;
+          const x = padX + ratio * plotW;
+          const minutes = String(Math.floor(elapsed / 60)).padStart(2, "0");
+          const seconds = String(Math.floor(elapsed % 60)).padStart(2, "0");
+          tickMarks.push(
+            "<line x1='" + x.toFixed(1) + "' y1='" + (timelineY + 2) + "' x2='" + x.toFixed(1) + "' y2='" + (timelineY + 9) + "' stroke='#cbd5e1'/>" +
+              "<text x='" + x.toFixed(1) + "' y='" + (timelineY + 24) + "' fill='#64748b' font-size='10.5' text-anchor='middle'>" +
+              minutes +
+              ":" +
+              seconds +
+              "</text>",
+          );
         }
-        const maxCount = Math.max(1, ...counts);
-        const converted = counts.map((count, idx) => {
-          const x = padX + ((idx + 0.5) / bins) * plotW;
-          const y = padY + (1 - count / maxCount) * plotH;
-          return { x, y, count };
-        });
-        const path = converted.map((p, i) => (i === 0 ? "M " : "L ") + p.x.toFixed(1) + " " + p.y.toFixed(1)).join(" ");
-        const dots = converted.map((p) => "<circle cx='" + p.x.toFixed(1) + "' cy='" + p.y.toFixed(1) + "' r='2.5' fill='#2563eb'/>").join("");
+
+        const stackedBySecond = new Map();
+        const offsets = [0, -8, 8, -16, 16, -24, 24];
+        const timelinePoints = points
+          .map((item) => {
+            const elapsed = Math.max(0, Math.min(safeDuration, Number(item.elapsedSec || 0)));
+            const secondKey = Math.round(elapsed * 2) / 2;
+            const stackIndex = stackedBySecond.get(secondKey) || 0;
+            stackedBySecond.set(secondKey, stackIndex + 1);
+            const style = eventStyles[item.eventType] || { label: item.eventType || "Event", color: "#64748b" };
+            const x = padX + (elapsed / safeDuration) * plotW;
+            const offset = offsets[stackIndex % offsets.length] - Math.floor(stackIndex / offsets.length) * 4;
+            const y = timelineY + offset;
+            const minutes = String(Math.floor(elapsed / 60)).padStart(2, "0");
+            const seconds = String(Math.floor(elapsed % 60)).padStart(2, "0");
+            return {
+              x,
+              y,
+              color: style.color,
+              label: style.label,
+              hover: style.label + " @ " + minutes + ":" + seconds,
+              eventType: item.eventType || "unknown",
+            };
+          })
+          .sort((a, b) => a.x - b.x);
+
+        const dots = timelinePoints
+          .map((point) => {
+            return (
+              "<circle cx='" +
+              point.x.toFixed(1) +
+              "' cy='" +
+              point.y.toFixed(1) +
+              "' r='3.8' fill='" +
+              point.color +
+              "' stroke='#ffffff' stroke-width='1.2'><title>" +
+              escapeHtml(point.hover) +
+              "</title></circle>"
+            );
+          })
+          .join("");
+
+        const usedTypes = [];
+        for (const point of timelinePoints) {
+          if (!usedTypes.includes(point.eventType)) {
+            usedTypes.push(point.eventType);
+          }
+        }
+        const legendHeight = Math.max(36, usedTypes.length * 16 + 14);
+        const legendY = height - padY - legendHeight;
+        const legendItems = usedTypes
+          .map((type, index) => {
+            const style = eventStyles[type] || { label: type, color: "#64748b" };
+            const y = legendY + 12 + index * 16;
+            return (
+              "<circle cx='478' cy='" +
+              y +
+              "' r='4' fill='" +
+              style.color +
+              "'/>" +
+              "<text x='488' y='" +
+              (y + 3) +
+              "' fill='#334155' font-size='11'>" +
+              escapeHtml(style.label) +
+              "</text>"
+            );
+          })
+          .join("");
 
         trajectorySvg.innerHTML =
           base +
-          "<path d='" + path + "' fill='none' stroke='#2563eb' stroke-width='2.3'/>" +
+          tickMarks.join("") +
           dots +
-          "<text x='52' y='18' fill='#64748b' font-size='11'>Y = click frequency per time window, X = time</text>" +
-          "<text x='" + (width - padX) + "' y='" + (height - 6) + "' text-anchor='end' fill='#64748b' font-size='11'>Time</text>" +
-          "<text x='" + (padX + 4) + "' y='" + (padY + 12) + "' fill='#64748b' font-size='11'>Freq</text>";
+          "<text x='" + padX + "' y='18' fill='#64748b' font-size='11'>Each colored dot is an operation over time</text>" +
+          "<text x='" + (width - padX) + "' y='" + (timelineY + 24) + "' text-anchor='end' fill='#64748b' font-size='11'>Time</text>" +
+          "<g>" +
+          "<rect x='466' y='" +
+          legendY +
+          "' width='144' height='" +
+          legendHeight +
+          "' rx='8' fill='rgba(255,255,255,0.92)' stroke='#d9e2ef'/>" +
+          legendItems +
+          "</g>";
       }
 
       function drawPoster(result) {
@@ -1695,8 +2343,18 @@ function renderWbtiPage() {
 
       searchBtn.addEventListener("click", () => {
         const keyword = searchInput.value.trim();
-        applyKeywordFilter();
+        applyKeywordFilter(keyword);
         trackSearch(keyword);
+      });
+      refreshDebugBtn.addEventListener("click", () => {
+        refreshTavilyDebug().catch((error) => {
+          debugStatus.textContent = "Live debug fetch failed: " + String(error.message || error);
+        });
+      });
+      clearCacheDebugBtn.addEventListener("click", () => {
+        clearTavilyCache().catch((error) => {
+          debugStatus.textContent = "Clear cache failed: " + String(error.message || error);
+        });
       });
       searchInput.addEventListener("keydown", (event) => {
         if (event.key === "Enter") {
@@ -1714,8 +2372,13 @@ function renderWbtiPage() {
         clearTimer();
         state.sessionId = "";
         state.result = null;
+        state.tavilyDebug = null;
+        state.allCards = [];
         state.cards = [];
         state.visibleCards = [];
+        debugStatus.textContent = "No debug data yet.";
+        debugJson.textContent = "{}";
+        tavilyDebugShell.open = false;
         setStage(landingStage);
       });
 
@@ -1753,11 +2416,15 @@ function renderWbtiPage() {
 
       closeModalBtn.addEventListener("click", () => {
         resultModal.classList.remove("active");
+        modalPreview.removeAttribute("src");
+        modalRelated.innerHTML = "";
       });
 
       resultModal.addEventListener("click", (event) => {
         if (event.target === resultModal) {
           resultModal.classList.remove("active");
+          modalPreview.removeAttribute("src");
+          modalRelated.innerHTML = "";
         }
       });
 
