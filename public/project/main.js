@@ -606,6 +606,9 @@ function computeWeights(events) {
     if ((event.eventType === "share" || event.eventType === "comment") && weights[event.contentType] !== undefined) {
       weights[event.contentType] += 0.22;
     }
+    if (event.eventType === "interaction" && weights[event.contentType] !== undefined) {
+      weights[event.contentType] += 0.18;
+    }
     if (event.eventType === "bookmark" && weights[event.contentType] !== undefined) {
       weights[event.contentType] += 0.15;
     }
@@ -703,18 +706,15 @@ function calculateMetrics(session) {
   const scrolls = events.filter((item) => item.eventType === "scroll");
   const shares = events.filter((item) => item.eventType === "share");
   const comments = events.filter((item) => item.eventType === "comment");
+  const interactions = events.filter((item) => item.eventType === "interaction");
   const bookmarks = events.filter((item) => item.eventType === "bookmark");
   const backtracks = events.filter((item) => item.eventType === "backtrack");
+  const searches = events.filter((item) => item.eventType === "search");
 
   const avgDwellMs = average(dwells.map((item) => safeNumber(item.payload?.durationMs)));
   const avgScrollSpeed = average(scrolls.map((item) => safeNumber(item.payload?.speed)));
-  const shortDwellRate = dwells.length
-    ? dwells.filter((item) => safeNumber(item.payload?.durationMs) <= 5000).length / dwells.length
-    : 0;
-  const deepClickRate = clicks.length
-    ? clicks.filter((item) => safeNumber(item.payload?.depthLevel) >= 4).length / clicks.length
-    : 0;
-  const clickRate = impressions.length ? clicks.length / impressions.length : 0;
+  const avgDwellSeconds = avgDwellMs / 1000;
+  const clickRate = clicks.length && impressions.length ? clicks.length / impressions.length : 0;
 
   const typeClicks = {
     knowledge: 0,
@@ -727,46 +727,67 @@ function calculateMetrics(session) {
       typeClicks[item.contentType] += 1;
     }
   }
-
-  const totalClicks = clicks.length || 1;
-  const typeValues = Object.values(typeClicks);
-  const nonZeroTypes = typeValues.filter((item) => item > 0).length;
-  const probabilities = typeValues.map((n) => n / totalClicks).filter((p) => p > 0);
-  const entropy = probabilities.length
-    ? -probabilities.reduce((sum, p) => sum + p * Math.log2(p), 0) / Math.log2(4)
-    : 0;
+  const browseEvents = impressions.length ? impressions : clicks;
+  const totalBrowsed = browseEvents.length;
+  const browseTypes = new Set();
+  for (const item of browseEvents) {
+    if (item && item.contentType && typeClicks[item.contentType] !== undefined) {
+      browseTypes.add(item.contentType);
+    }
+  }
 
   const splitTs = session.startedAt + SESSION_DURATION_SECONDS * 1000 * 0.4;
   const firstPhaseClicks = clicks.filter((item) => item.ts <= splitTs).length;
   const secondPhaseClicks = clicks.length - firstPhaseClicks;
-  const pathTransitions = clicks.length > 1 ? clicks.length - 1 : 0;
-  const backtrackRate = pathTransitions ? backtracks.length / pathTransitions : 0;
-  const firstClickHitRate = clickRate > 0.25 ? 1 : clickRate / 0.25;
+  const totalClicks = clicks.length;
+  const differentTypesCount = browseTypes.size;
+  const backtrackRate = totalClicks ? backtracks.length / totalClicks : 0;
+  const hitRate = clamp(clickRate, 0, 1);
+  const searchPerClick = searches.length / Math.max(totalClicks, 1);
+  const shortPathScore = 1 - normalize(searchPerClick, 0, 3);
   const validReads = dwells.filter((item) => safeNumber(item.payload?.durationMs) > 2500).length;
+  const depthScoreRaw = avgDwellSeconds * clickRate;
+  const depthScore = clamp(depthScoreRaw * 25, 0, 100);
 
-  const depthScore =
-    (normalize(avgDwellMs, 2000, 42000) * 0.55 + normalize(clickRate, 0.05, 0.8) * 0.2 + deepClickRate * 0.25) * 100;
-  const speedScore = (normalize(avgScrollSpeed, 0.2, 6) * 0.6 + shortDwellRate * 0.4) * 100;
-  const explorationScore = ((nonZeroTypes / 4) * 0.5 + entropy * 0.5) * 100;
-  const emotionScore = (typeClicks.emotion / totalClicks) * 100;
-  const socialScore = ((shares.length + comments.length) / Math.max(events.length, 1)) * 360;
-  const goalScore = ((1 - backtrackRate) * 0.5 + clamp(firstClickHitRate, 0, 1) * 0.5) * 100;
-  const collectScore = (bookmarks.length / Math.max(validReads, 1)) * 100;
+  const scrollSpeedNorm = normalize(avgScrollSpeed, 40, 1300);
+  const invDwellNorm = avgDwellSeconds > 0 ? clamp((1 / avgDwellSeconds) / 1.2, 0, 1) : 1;
+  const speedScoreRaw = scrollSpeedNorm + invDwellNorm;
+  const speedScore = clamp((speedScoreRaw / 2) * 100, 0, 100);
+
+  const explorationScore = totalBrowsed ? (differentTypesCount / totalBrowsed) * 100 : 0;
+  const emotionScore = totalClicks ? (typeClicks.emotion / totalClicks) * 100 : 0;
+
+  const socialInteractions = shares.length + comments.length + interactions.length;
+  const socialScore = clamp(socialInteractions * 20, 0, 100);
+
+  const goalScoreRaw = shortPathScore * 0.45 + (1 - backtrackRate) * 0.35 + hitRate * 0.2;
+  const goalScore = clamp(goalScoreRaw * 100, 0, 100);
+
+  const collectScore = clamp((bookmarks.length / Math.max(validReads, 1)) * 100, 0, 100);
 
   return {
-    depthScore: clamp(depthScore, 0, 100),
-    speedScore: clamp(speedScore, 0, 100),
-    explorationScore: clamp(explorationScore, 0, 100),
-    emotionScore: clamp(emotionScore, 0, 100),
-    socialScore: clamp(socialScore, 0, 100),
-    goalScore: clamp(goalScore, 0, 100),
-    collectScore: clamp(collectScore, 0, 100),
+    depthScore,
+    speedScore,
+    explorationScore,
+    emotionScore,
+    socialScore,
+    goalScore,
+    collectScore,
     stats: {
       totalEvents: events.length,
-      totalClicks: clicks.length,
+      totalClicks: totalClicks,
       totalImpressions: impressions.length,
       avgDwellMs,
+      avgDwellSeconds,
       avgScrollSpeed,
+      clickRate,
+      totalBrowsed,
+      differentTypesCount,
+      searchCount: searches.length,
+      backtrackCount: backtracks.length,
+      socialInteractions,
+      depthScoreRaw,
+      speedScoreRaw,
       firstPhaseClicks,
       secondPhaseClicks,
       typeClicks,
@@ -937,7 +958,7 @@ app.post("/api/session/event", (req, res) => {
     return;
   }
 
-  const allowList = new Set(["impression", "click", "dwell_end", "scroll", "backtrack", "share", "comment", "bookmark", "search"]);
+  const allowList = new Set(["impression", "click", "dwell_end", "scroll", "backtrack", "share", "comment", "bookmark", "interaction", "search"]);
   if (!allowList.has(eventType)) {
     res.status(400).json({ error: "Unsupported event type." });
     return;
@@ -1364,6 +1385,27 @@ function renderWbtiPage() {
       word-break: break-all;
       font-size: 0.9rem;
     }
+    .modal-actions {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .mini-btn {
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      padding: 7px 10px;
+      background: #f8fafc;
+      color: #0f172a;
+      font-size: 0.82rem;
+      cursor: pointer;
+    }
+    .mini-btn.active {
+      background: #dcfce7;
+      border-color: #22c55e;
+      color: #14532d;
+      font-weight: 700;
+    }
     .related-links {
       margin-top: 12px;
       border-top: 1px dashed var(--line);
@@ -1567,6 +1609,12 @@ function renderWbtiPage() {
         Source:
         <a id="modalLink" href="#" target="_blank" rel="noreferrer">Open original page</a>
       </div>
+      <div class="modal-actions">
+        <button id="bookmarkBtn" class="mini-btn" type="button">Bookmark</button>
+        <button id="shareBtn" class="mini-btn" type="button">Share</button>
+        <button id="commentBtn" class="mini-btn" type="button">Comment</button>
+        <button id="interactBtn" class="mini-btn" type="button">Interact</button>
+      </div>
       <div id="modalRelated" class="related-links"></div>
     </div>
   </div>
@@ -1612,6 +1660,10 @@ function renderWbtiPage() {
       const modalContent = document.getElementById("modalContent");
       const modalPreview = document.getElementById("modalPreview");
       const modalLink = document.getElementById("modalLink");
+      const bookmarkBtn = document.getElementById("bookmarkBtn");
+      const shareBtn = document.getElementById("shareBtn");
+      const commentBtn = document.getElementById("commentBtn");
+      const interactBtn = document.getElementById("interactBtn");
       const modalRelated = document.getElementById("modalRelated");
       const closeModalBtn = document.getElementById("closeModalBtn");
 
@@ -1628,6 +1680,14 @@ function renderWbtiPage() {
         allCards: [],
         cards: [],
         visibleCards: [],
+        impressedIds: new Set(),
+        bookmarkedIds: new Set(),
+        modalVisit: null,
+        modalItem: null,
+        scrollSample: {
+          lastTs: 0,
+          lastEmitTs: 0,
+        },
       };
 
       function setStage(stage) {
@@ -1645,6 +1705,38 @@ function renderWbtiPage() {
           throw new Error(payload.error || "Request failed.");
         }
         return payload;
+      }
+
+      async function trackSessionEvent(eventType, payload) {
+        if (!state.sessionId) return;
+        try {
+          await request("/api/session/event", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: state.sessionId,
+              eventType,
+              payload: payload || {},
+            }),
+          });
+        } catch (error) {
+          console.warn(eventType + " event failed:", error.message || error);
+        }
+      }
+
+      function updateBookmarkButton() {
+        if (!state.modalItem || !state.modalItem.id) {
+          bookmarkBtn.classList.remove("active");
+          bookmarkBtn.textContent = "Bookmark";
+          return;
+        }
+        if (state.bookmarkedIds.has(state.modalItem.id)) {
+          bookmarkBtn.classList.add("active");
+          bookmarkBtn.textContent = "Bookmarked";
+        } else {
+          bookmarkBtn.classList.remove("active");
+          bookmarkBtn.textContent = "Bookmark";
+        }
       }
 
       function stringifyDebug(value) {
@@ -1733,15 +1825,19 @@ function renderWbtiPage() {
       function toCard(item) {
         const url = sanitizeExternalUrl(item && item.url);
         if (!url) return null;
+        const rawType = String((item && item.type) || "knowledge");
+        const validType = ["knowledge", "emotion", "entertainment", "social"].includes(rawType)
+          ? rawType
+          : "knowledge";
         return {
-          id: url,
+          id: String((item && item.id) || url),
           title: String(item && item.title ? item.title : "").trim() || "Untitled source",
           content: String(item && item.content ? item.content : "").trim() || "No content snippet available.",
           url,
           favicon: sanitizeExternalUrl(item && item.favicon),
           source: "preset",
-          type: "knowledge",
-          depthLevel: 1,
+          type: validType,
+          depthLevel: Math.max(1, Math.round(Number(item && item.depthLevel) || 1)),
         };
       }
 
@@ -1797,6 +1893,12 @@ function renderWbtiPage() {
 
         state.sessionId = payload.sessionId;
         state.result = null;
+        state.impressedIds = new Set();
+        state.bookmarkedIds = new Set();
+        state.modalVisit = null;
+        state.modalItem = null;
+        state.scrollSample.lastTs = 0;
+        state.scrollSample.lastEmitTs = 0;
         state.startedAt = payload.startedAt || Date.now();
         state.durationSeconds = payload.durationSeconds || 300;
         searchTopicTitle.textContent = payload.topic.title;
@@ -1846,6 +1948,7 @@ function renderWbtiPage() {
           if (!hit) return;
           card.addEventListener("click", () => openModal(hit));
         });
+        trackImpressionsForVisible();
       }
 
       function escapeHtml(str) {
@@ -1909,24 +2012,76 @@ function renderWbtiPage() {
         renderCards();
       }
 
-      async function trackSearch(keyword) {
+      function trackScrollSample(deltaY) {
+        if (!state.sessionId || !searchStage.classList.contains("active")) return;
+        const now = Date.now();
+        const lastTs = state.scrollSample.lastTs || now;
+        const dt = Math.max(1, now - lastTs);
+        state.scrollSample.lastTs = now;
+        const delta = Number(deltaY) || 0;
+        const speed = Math.abs(delta) / (dt / 1000);
+        if (now - state.scrollSample.lastEmitTs < 650) {
+          return;
+        }
+        state.scrollSample.lastEmitTs = now;
+        trackSessionEvent("scroll", {
+          speed,
+          deltaY: delta,
+        });
+      }
+
+      function trackImpressionsForVisible() {
         if (!state.sessionId) return;
-        try {
-          await request("/api/session/event", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              sessionId: state.sessionId,
-              eventType: "search",
-              payload: { keyword },
-            }),
+        for (const item of state.visibleCards) {
+          if (!item || !item.id || state.impressedIds.has(item.id)) continue;
+          state.impressedIds.add(item.id);
+          trackSessionEvent("impression", {
+            contentId: item.id,
+            contentType: item.type || "knowledge",
+            depthLevel: item.depthLevel || 1,
           });
-        } catch (error) {
-          console.warn("Search event failed:", error.message);
         }
       }
 
+      async function trackSearch(keyword) {
+        if (!state.sessionId) return;
+        await trackSessionEvent("search", { keyword });
+      }
+
+      function closeResultModal(trackBacktrack = true) {
+        if (state.modalVisit && state.sessionId) {
+          const durationMs = Math.max(200, Date.now() - state.modalVisit.startedAt);
+          trackSessionEvent("dwell_end", {
+            contentId: state.modalVisit.contentId,
+            contentType: state.modalVisit.contentType,
+            depthLevel: state.modalVisit.depthLevel,
+            durationMs,
+          });
+          if (trackBacktrack) {
+            trackSessionEvent("backtrack", {
+              contentId: state.modalVisit.contentId,
+              contentType: state.modalVisit.contentType,
+              depthLevel: state.modalVisit.depthLevel,
+              durationMs,
+            });
+          }
+        }
+        state.modalVisit = null;
+        state.modalItem = null;
+        shareBtn.textContent = "Share";
+        interactBtn.textContent = "Interact";
+        resultModal.classList.remove("active");
+        modalPreview.removeAttribute("src");
+        modalRelated.innerHTML = "";
+        updateBookmarkButton();
+      }
+
       async function openModal(item) {
+        if (!item) return;
+        if (state.modalVisit) {
+          closeResultModal(false);
+        }
+        state.modalItem = item;
         modalTitle.textContent = item.title || "Untitled source";
         modalMeta.textContent = hostnameOf(item.url);
         modalContent.textContent = item.content || "No content snippet available.";
@@ -1938,27 +2093,30 @@ function renderWbtiPage() {
           modalPreview.removeAttribute("src");
         }
         renderRelatedLinks(item.id);
+        updateBookmarkButton();
         resultModal.classList.add("active");
+        state.modalVisit = {
+          contentId: item.id,
+          contentType: item.type || "knowledge",
+          depthLevel: item.depthLevel || 1,
+          startedAt: Date.now(),
+        };
 
-        if (state.sessionId) {
-          try {
-            await request("/api/session/event", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                sessionId: state.sessionId,
-                eventType: "click",
-                payload: {
-                  contentId: item.id,
-                  contentType: item.type || "knowledge",
-                  depthLevel: item.depthLevel || 1,
-                },
-              }),
-            });
-          } catch (error) {
-            console.warn("Click event failed:", error.message);
-          }
-        }
+        await trackSessionEvent("click", {
+          contentId: item.id,
+          contentType: item.type || "knowledge",
+          depthLevel: item.depthLevel || 1,
+        });
+      }
+
+      function modalPayload(extra) {
+        if (!state.modalItem) return null;
+        return {
+          contentId: state.modalItem.id,
+          contentType: state.modalItem.type || "knowledge",
+          depthLevel: state.modalItem.depthLevel || 1,
+          ...(extra || {}),
+        };
       }
 
       function clearTimer() {
@@ -2094,6 +2252,7 @@ function renderWbtiPage() {
           scroll: { label: "Scroll", color: "#f59e0b" },
           share: { label: "Share", color: "#ec4899" },
           comment: { label: "Comment", color: "#9333ea" },
+          interaction: { label: "Interact", color: "#8b5cf6" },
           bookmark: { label: "Bookmark", color: "#22c55e" },
           backtrack: { label: "Backtrack", color: "#ef4444" },
         };
@@ -2288,6 +2447,9 @@ function renderWbtiPage() {
       async function finishSession(reason) {
         if (!state.sessionId || state.finishing) return;
         state.finishing = true;
+        if (state.modalVisit) {
+          closeResultModal(false);
+        }
         clearTimer();
         setStage(reportStage);
         reportHeader.textContent = reason === "manual" ? "Finishing test by user action..." : "5-minute limit reached. Generating report...";
@@ -2362,13 +2524,26 @@ function renderWbtiPage() {
           searchBtn.click();
         }
       });
+      document.addEventListener(
+        "wheel",
+        (event) => {
+          trackScrollSample(event.deltaY);
+        },
+        { passive: true },
+      );
 
       backBtn.addEventListener("click", () => {
+        if (state.modalVisit) {
+          closeResultModal(true);
+        }
         clearTimer();
         setStage(landingStage);
       });
       endTestBtn.addEventListener("click", () => finishSession("manual"));
       restartBtn.addEventListener("click", () => {
+        if (state.modalVisit) {
+          closeResultModal(false);
+        }
         clearTimer();
         state.sessionId = "";
         state.result = null;
@@ -2376,6 +2551,10 @@ function renderWbtiPage() {
         state.allCards = [];
         state.cards = [];
         state.visibleCards = [];
+        state.impressedIds = new Set();
+        state.bookmarkedIds = new Set();
+        state.modalItem = null;
+        state.modalVisit = null;
         debugStatus.textContent = "No debug data yet.";
         debugJson.textContent = "{}";
         tavilyDebugShell.open = false;
@@ -2414,17 +2593,62 @@ function renderWbtiPage() {
         }
       });
 
+      bookmarkBtn.addEventListener("click", () => {
+        if (!state.modalItem || state.bookmarkedIds.has(state.modalItem.id)) return;
+        state.bookmarkedIds.add(state.modalItem.id);
+        updateBookmarkButton();
+        const payload = modalPayload();
+        if (payload) {
+          trackSessionEvent("bookmark", payload);
+        }
+      });
+
+      shareBtn.addEventListener("click", async () => {
+        if (!state.modalItem) return;
+        const payload = modalPayload();
+        if (!payload) return;
+        try {
+          await navigator.clipboard.writeText(state.modalItem.url || "");
+          shareBtn.textContent = "Shared";
+          setTimeout(() => {
+            shareBtn.textContent = "Share";
+          }, 900);
+        } catch (error) {
+          console.warn("Share copy failed:", error.message || error);
+        }
+        trackSessionEvent("share", payload);
+      });
+
+      commentBtn.addEventListener("click", () => {
+        if (!state.modalItem) return;
+        const text = window.prompt("Leave a quick comment on this source:");
+        const commentText = String(text || "").trim();
+        if (!commentText) return;
+        const payload = modalPayload({ length: commentText.length });
+        if (payload) {
+          trackSessionEvent("comment", payload);
+        }
+      });
+
+      interactBtn.addEventListener("click", () => {
+        if (!state.modalItem) return;
+        const payload = modalPayload({ kind: "reaction" });
+        if (payload) {
+          trackSessionEvent("interaction", payload);
+        }
+        interactBtn.textContent = "Interacted";
+        setTimeout(() => {
+          interactBtn.textContent = "Interact";
+        }, 850);
+      });
+
       closeModalBtn.addEventListener("click", () => {
-        resultModal.classList.remove("active");
-        modalPreview.removeAttribute("src");
-        modalRelated.innerHTML = "";
+        closeResultModal(true);
       });
 
       resultModal.addEventListener("click", (event) => {
         if (event.target === resultModal) {
-          resultModal.classList.remove("active");
-          modalPreview.removeAttribute("src");
-          modalRelated.innerHTML = "";
+          closeResultModal(true);
         }
       });
 
