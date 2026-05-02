@@ -1567,6 +1567,7 @@ function renderWbtiPage() {
       <div class="report-grid">
         <article class="report-card">
           <h3>Personality Summary</h3>
+          <img id="personaImage" src="" alt="Persona" style="width:100%;max-width:300px;margin:12px 0;border-radius:8px;" />
           <p id="personaText" class="muted"></p>
           <p id="explainText" class="muted"></p>
           <div id="metricsPanel"></div>
@@ -2379,6 +2380,25 @@ function renderWbtiPage() {
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, w, h);
 
+        // Load and draw persona image
+        const personaImagePath = getPersonaImagePath(result.persona.primary);
+        const img = new Image();
+        img.onload = () => {
+          // Draw image with aspect ratio preservation
+          const imgWidth = 200;
+          const imgHeight = 200;
+          const imgX = (w - imgWidth) / 2;
+          const imgY = 220;
+          ctx.drawImage(img, imgX, imgY, imgWidth, imgHeight);
+          drawPosterText(ctx, w, h, result);
+        };
+        img.onerror = () => {
+          drawPosterText(ctx, w, h, result);
+        };
+        img.src = personaImagePath;
+      }
+
+      function drawPosterText(ctx, w, h, result) {
         ctx.fillStyle = "#0f172a";
         ctx.font = "bold 44px Inter, Segoe UI, sans-serif";
         ctx.fillText("WBTI Report", 40, 82);
@@ -2396,7 +2416,7 @@ function renderWbtiPage() {
           ["Emotion", result.metrics.emotionScore],
           ["Social", result.metrics.socialScore],
         ];
-        let y = 260;
+        let y = 480;
         for (const row of rows) {
           const name = row[0];
           const score = Number(row[1] || 0);
@@ -2415,8 +2435,23 @@ function renderWbtiPage() {
         ctx.fillStyle = "#334155";
         ctx.font = "18px Inter, Segoe UI, sans-serif";
         const desc = (result.explanation || []).join(" ");
-        wrapText(ctx, desc, 42, 580, 636, 28);
-        ctx.fillText("Topic: " + (result.topic || ""), 42, 840);
+        wrapText(ctx, desc, 42, 750, 636, 28);
+        ctx.fillText("Topic: " + (result.topic || ""), 42, 870);
+      }
+
+      function getPersonaImagePath(personaName) {
+        // Map persona names to image file names
+        const imageMap = {
+          "Analyzer": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/analyzer.png",
+          "Collector": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/collector.png",
+          "Deep Diver": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/deepdiver.png",
+          "Emotional Drifter": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/emotionaldrifter.png",
+          "Goal Hunter": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/goalhunter.png",
+          "Rapid Scroller": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/rapidscroller.png",
+          "Social Radar": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/socialradar.png",
+          "Wanderer": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/wanderer.png",
+        };
+        return imageMap[personaName] || "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/analyzer.png";
       }
 
       function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
@@ -2468,6 +2503,12 @@ function renderWbtiPage() {
           const result = payload.result;
           reportHeader.textContent = "WBTI report generated for topic: " + (result.topic || "");
           state.result = result;
+          // Set persona image
+          const personaImageElement = document.getElementById("personaImage");
+          if (personaImageElement) {
+            personaImageElement.src = getPersonaImagePath(result.persona.primary);
+            personaImageElement.alt = result.persona.primary;
+          }
           personaText.textContent =
             "Primary: " + result.persona.primary + " | Secondary: " + result.persona.secondary + " (" + result.persona.secondaryPct.toFixed(0) + "%)";
           explainText.textContent = (result.explanation || []).join(" ");

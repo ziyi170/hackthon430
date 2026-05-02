@@ -2442,16 +2442,16 @@ function renderWbtiPage() {
       function getPersonaImagePath(personaName) {
         // Map persona names to image file names
         const imageMap = {
-          "Analyzer": "../analyzer.png",
-          "Collector": "../collector.png",
-          "Deep Diver": "../deepdiver.png",
-          "Emotional Drifter": "../emotional%20drifter.png",
-          "Goal Hunter": "../goal%20hunter.png",
-          "Rapid Scroller": "../rapid%20scroller.png",
-          "Social Radar": "../social%20radar.png",
-          "Wanderer": "../wanderer.png",
+          "Analyzer": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/analyzer.png",
+          "Collector": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/collector.png",
+          "Deep Diver": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/deepdiver.png",
+          "Emotional Drifter": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/emotionaldrifter.png",
+          "Goal Hunter": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/goalhunter.png",
+          "Rapid Scroller": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/rapidscroller.png",
+          "Social Radar": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/socialradar.png",
+          "Wanderer": "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/wanderer.png",
         };
-        return imageMap[personaName] || "../analyzer.png";
+        return imageMap[personaName] || "https://raw.githubusercontent.com/ziyi170/hackthon430/refs/heads/WBTI/public/analyzer.png";
       }
 
       function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
