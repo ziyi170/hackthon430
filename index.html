@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WBTI MBTI 收集站</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="card intro">
+        <div class="intro-head">
+          <img src="/logo.png" alt="BrowserPod Logo" class="logo" />
+          <div>
+            <h1>WBTI MBTI 收集站</h1>
+            <p class="lead">在当前浏览器内启动问卷服务，再让参与者扫码填写。</p>
+          </div>
+        </div>
+
+        <div class="status-row">
+          <span id="statusBadge" class="badge pending">BrowserPod 启动中...</span>
+        </div>
+        <p id="url" class="url">等待 Portal URL...</p>
+
+        <div class="action-row">
+          <button id="copyLinkBtn" type="button" class="ghost" disabled>复制问卷链接</button>
+          <a id="openLinkBtn" class="ghost disabled" href="#" target="_blank" rel="noreferrer">新标签打开问卷</a>
+        </div>
+      </section>
+
+      <section class="grid">
+        <article class="card qr-card">
+          <h2>问卷二维码</h2>
+          <div class="qr-shell">
+            <img id="qrImage" alt="Questionnaire QR code" />
+            <p id="qrHint">Portal 创建后会自动生成二维码。</p>
+          </div>
+        </article>
+
+        <article class="card summary-card">
+          <h2>收集概览</h2>
+          <div class="metric-row">
+            <div class="metric">
+              <div class="metric-label">总提交数</div>
+              <div id="totalCount" class="metric-value">0</div>
+            </div>
+            <div class="metric">
+              <div class="metric-label">最近刷新</div>
+              <div id="lastUpdated" class="metric-value small">--</div>
+            </div>
+          </div>
+          <div id="typeStats" class="pill-list"></div>
+        </article>
+      </section>
+
+      <section class="card">
+        <h2>最近提交</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>昵称</th>
+                <th>MBTI</th>
+                <th>提交时间</th>
+              </tr>
+            </thead>
+            <tbody id="recentTableBody">
+              <tr>
+                <td colspan="4" class="empty">尚未收到提交</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card preview-panel">
+        <h2>问卷预览与运行日志</h2>
+        <div class="preview-grid">
+          <iframe id="portal" title="Survey preview"></iframe>
+          <pre id="console"></pre>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
