@@ -1,4 +1,5 @@
 import { BrowserPod } from "@leaningtech/browserpod";
+import QRCode from "qrcode";
 import { copyFile } from "./utils";
 
 const statusBadge = document.getElementById("statusBadge");
@@ -27,15 +28,22 @@ function setPortalUrl(url, port) {
   openLinkBtn.classList.remove("disabled");
 }
 
-function setQrCode(url) {
-  qrImage.src = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(url)}`;
-  qrImage.onload = () => {
+async function setQrCode(url) {
+  qrHint.textContent = "Generating QR code...";
+  qrImage.style.display = "none";
+
+  try {
+    const dataUrl = await QRCode.toDataURL(url, {
+      width: 280,
+      margin: 1,
+    });
+    qrImage.src = dataUrl;
     qrImage.style.display = "block";
     qrHint.textContent = "Scan to open the WBTI behavior browser test.";
-  };
-  qrImage.onerror = () => {
+  } catch (error) {
     qrHint.textContent = "QR loading failed. Please use the link above.";
-  };
+    console.warn("Failed to generate QR code:", error);
+  }
 }
 
 function renderTypeStats(byType) {
@@ -137,7 +145,7 @@ try {
     portalUrl = url;
     portalIframe.src = url;
     setPortalUrl(url, port);
-    setQrCode(url);
+    void setQrCode(url);
     copyLinkBtn.disabled = false;
     setStatus("ready", "WBTI test is live");
     startPollingStats();

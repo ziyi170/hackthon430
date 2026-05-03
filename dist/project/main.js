@@ -710,6 +710,7 @@ function calculateMetrics(session) {
   const bookmarks = events.filter((item) => item.eventType === "bookmark");
   const backtracks = events.filter((item) => item.eventType === "backtrack");
   const searches = events.filter((item) => item.eventType === "search");
+  const refreshes = events.filter((item) => item.eventType === "refresh");
 
   const avgDwellMs = average(dwells.map((item) => safeNumber(item.payload?.durationMs)));
   const avgScrollSpeed = average(scrolls.map((item) => safeNumber(item.payload?.speed)));
@@ -754,8 +755,18 @@ function calculateMetrics(session) {
   const speedScoreRaw = scrollSpeedNorm + invDwellNorm;
   const speedScore = clamp((speedScoreRaw / 2) * 100, 0, 100);
 
-  const explorationScore = totalBrowsed ? (differentTypesCount / totalBrowsed) * 100 : 0;
-  const emotionScore = totalClicks ? (typeClicks.emotion / totalClicks) * 100 : 0;
+  const explorationScoreBase = totalBrowsed ? (differentTypesCount / totalBrowsed) * 100 : 0;
+  const emotionScoreBase = totalClicks ? (typeClicks.emotion / totalClicks) * 100 : 0;
+  const refreshExploreBonus = refreshes.reduce(
+    (sum, item) => sum + clamp(safeNumber(item.payload?.exploreBonus, 4), 0, 20),
+    0,
+  );
+  const refreshEmotionBonus = refreshes.reduce(
+    (sum, item) => sum + clamp(safeNumber(item.payload?.emotionBonus, 2), 0, 20),
+    0,
+  );
+  const explorationScore = clamp(explorationScoreBase + refreshExploreBonus, 0, 100);
+  const emotionScore = clamp(emotionScoreBase + refreshEmotionBonus, 0, 100);
 
   const socialInteractions = shares.length + comments.length + interactions.length;
   const socialScore = clamp(socialInteractions * 20, 0, 100);
@@ -785,9 +796,14 @@ function calculateMetrics(session) {
       differentTypesCount,
       searchCount: searches.length,
       backtrackCount: backtracks.length,
+      refreshCount: refreshes.length,
       socialInteractions,
       depthScoreRaw,
       speedScoreRaw,
+      explorationScoreBase,
+      emotionScoreBase,
+      refreshExploreBonus,
+      refreshEmotionBonus,
       firstPhaseClicks,
       secondPhaseClicks,
       typeClicks,
@@ -865,6 +881,7 @@ function buildExplanation(metrics) {
 }
 
 function analyzeSession(session) {
+  const endedAtMs = Date.now();
   const metrics = calculateMetrics(session);
   const persona = pickPersona(metrics);
   const timeline = {
@@ -880,7 +897,8 @@ function analyzeSession(session) {
     sessionId: session.sessionId,
     recordId: session.numericId,
     topic: session.topic.title,
-    endedAt: new Date().toISOString(),
+    endedAt: new Date(endedAtMs).toISOString(),
+    actualDurationSeconds: Math.max(1, Number(((endedAtMs - session.startedAt) / 1000).toFixed(1))),
     metrics,
     persona,
     mbtiHint: mbtiHint(metrics),
@@ -958,7 +976,19 @@ app.post("/api/session/event", (req, res) => {
     return;
   }
 
-  const allowList = new Set(["impression", "click", "dwell_end", "scroll", "backtrack", "share", "comment", "bookmark", "interaction", "search"]);
+  const allowList = new Set([
+    "impression",
+    "click",
+    "dwell_end",
+    "scroll",
+    "backtrack",
+    "share",
+    "comment",
+    "bookmark",
+    "interaction",
+    "search",
+    "refresh",
+  ]);
   if (!allowList.has(eventType)) {
     res.status(400).json({ error: "Unsupported event type." });
     return;
@@ -1250,6 +1280,14 @@ function renderWbtiPage() {
       background: #f8fbff;
       padding: 12px;
     }
+    .cards-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 8px;
+    }
     .debug-shell {
       margin-top: 12px;
       border: 1px solid var(--line);
@@ -1540,7 +1578,10 @@ function renderWbtiPage() {
           </div>
         </div>
         <div class="cards-wrap">
-          <p class="muted" style="margin-top:0;">Random 5 from 10 preset sources</p>
+          <div class="cards-head">
+            <p class="muted" style="margin-top:0;">Random 5 from 10 preset sources</p>
+            <button id="refreshCardsBtn" class="debug-mini-btn" type="button">Refresh 5 Cards</button>
+          </div>
           <div id="cardsGrid" class="cards-grid"></div>
           <details id="tavilyDebugShell" class="debug-shell">
             <summary>Source Debug</summary>
@@ -1634,6 +1675,7 @@ function renderWbtiPage() {
       const searchTopicTitle = document.getElementById("searchTopicTitle");
       const searchInput = document.getElementById("searchInput");
       const searchBtn = document.getElementById("searchBtn");
+      const refreshCardsBtn = document.getElementById("refreshCardsBtn");
       const endTestBtn = document.getElementById("endTestBtn");
       const backBtn = document.getElementById("backBtn");
       const timerFill = document.getElementById("timerFill");
@@ -2013,6 +2055,19 @@ function renderWbtiPage() {
         renderCards();
       }
 
+      function refreshVisibleCards() {
+        if (!state.allCards.length) {
+          return;
+        }
+        state.visibleCards = shuffledPickLocal(state.allCards, 5);
+        renderCards();
+        trackSessionEvent("refresh", {
+          exploreBonus: 4,
+          emotionBonus: 2,
+          selectedCount: state.visibleCards.length,
+        });
+      }
+
       function trackScrollSample(deltaY) {
         if (!state.sessionId || !searchStage.classList.contains("active")) return;
         const now = Date.now();
@@ -2256,6 +2311,7 @@ function renderWbtiPage() {
           interaction: { label: "Interact", color: "#8b5cf6" },
           bookmark: { label: "Bookmark", color: "#22c55e" },
           backtrack: { label: "Backtrack", color: "#ef4444" },
+          refresh: { label: "Refresh", color: "#f97316" },
         };
         const base =
           "<rect x='0' y='0' width='" + width + "' height='" + height + "' fill='#f8fbff'/>" +
@@ -2265,7 +2321,11 @@ function renderWbtiPage() {
           return;
         }
 
-        const safeDuration = Math.max(1, Number(durationSeconds || 300));
+        const maxPointSec = points.reduce((max, item) => {
+          const elapsedSec = Number(item && item.elapsedSec);
+          return Math.max(max, Number.isFinite(elapsedSec) ? elapsedSec : 0);
+        }, 0);
+        const safeDuration = Math.max(1, Number(durationSeconds || 300), maxPointSec);
         const ticks = 6;
         const tickMarks = [];
         for (let i = 0; i < ticks; i += 1) {
@@ -2316,9 +2376,9 @@ function renderWbtiPage() {
               point.x.toFixed(1) +
               "' cy='" +
               point.y.toFixed(1) +
-              "' r='3.8' fill='" +
+              "' r='2.6' fill='" +
               point.color +
-              "' stroke='#ffffff' stroke-width='1.2'><title>" +
+              "'><title>" +
               escapeHtml(point.hover) +
               "</title></circle>"
             );
@@ -2515,7 +2575,7 @@ function renderWbtiPage() {
           mbtiText.textContent = "MBTI tendency: " + result.mbtiHint;
           renderMetrics(result);
           drawRadar(result.metrics || {});
-          drawTrajectory(result.trajectory || [], state.durationSeconds || 300);
+          drawTrajectory(result.trajectory || [], result.actualDurationSeconds || state.durationSeconds || 300);
           drawPoster(result);
         } catch (error) {
           reportHeader.textContent = "Failed to generate report.";
@@ -2548,6 +2608,16 @@ function renderWbtiPage() {
         const keyword = searchInput.value.trim();
         applyKeywordFilter(keyword);
         trackSearch(keyword);
+      });
+      refreshCardsBtn.addEventListener("click", () => {
+        refreshCardsBtn.disabled = true;
+        const original = refreshCardsBtn.textContent;
+        refreshCardsBtn.textContent = "Refreshed";
+        refreshVisibleCards();
+        setTimeout(() => {
+          refreshCardsBtn.disabled = false;
+          refreshCardsBtn.textContent = original;
+        }, 450);
       });
       refreshDebugBtn.addEventListener("click", () => {
         refreshTavilyDebug().catch((error) => {
